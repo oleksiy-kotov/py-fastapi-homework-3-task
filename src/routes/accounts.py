@@ -1,33 +1,32 @@
 from datetime import datetime, timezone, timedelta
-from http.client import responses
-from typing import cast, Optional
 
-from fastapi import APIRouter, Depends, status, HTTPException, logger
-from jose import jwt, JWTError
-from pip._internal import req
+from fastapi import APIRouter, Depends, status, HTTPException
+from jose import JWTError
+
 from sqlalchemy import select, delete
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session, joinedload
 
-from config.settings import Settings
-from database.session_postgresql import settings
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from schemas import TokenRefreshResponseSchema
-from security.token_manager import JWTAuthManager
+
 from config import get_jwt_auth_manager, get_settings, BaseAppSettings
 from database import (
     get_db,
     UserModel,
-    UserGroupModel,
-    UserGroupEnum,
     ActivationTokenModel,
     PasswordResetTokenModel,
     RefreshTokenModel
 )
-from exceptions import BaseSecurityError
-from schemas.accounts import UserRegistrationRequestSchema, UserRegistrationResponseSchema, UserActivationRequestSchema, \
-    PasswordResetRequestSchema, PasswordResetCompleteRequestSchema, UserLoginResponseSchema, UserLoginRequestSchema, \
-    TokenRefreshRequestSchema, MessageResponseSchema
+
+from schemas.accounts import (UserRegistrationRequestSchema,
+                              UserRegistrationResponseSchema,
+                              UserActivationRequestSchema,
+                              PasswordResetRequestSchema,
+                              PasswordResetCompleteRequestSchema,
+                              UserLoginResponseSchema,
+                              UserLoginRequestSchema,
+                              TokenRefreshRequestSchema,
+                              MessageResponseSchema)
 from security.interfaces import JWTAuthManagerInterface
 from security.passwords import hash_password, verify_password
 from security.utils import generate_secure_token
@@ -35,7 +34,7 @@ from security.utils import generate_secure_token
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 
-@router.post("/register", response_model=UserRegistrationResponseSchema, status_code=status.HTTP_201_CREATED)
+@router.post("/register/", response_model=UserRegistrationResponseSchema, status_code=status.HTTP_201_CREATED)
 async def register_user(user_data: UserRegistrationRequestSchema, db: AsyncSession = Depends(get_db)):
     query = select(UserModel).where(UserModel.email == user_data.email)
     result = await db.execute(query)
@@ -57,7 +56,7 @@ async def register_user(user_data: UserRegistrationRequestSchema, db: AsyncSessi
                                                token=token,
                                                expires_at=datetime.utcnow() + timedelta(hours=24)))
             db.add(activation)
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred during user creation."
@@ -66,7 +65,7 @@ async def register_user(user_data: UserRegistrationRequestSchema, db: AsyncSessi
     return UserRegistrationResponseSchema(id=new_user.id, email=new_user.email)
 
 
-@router.post("/activate", response_model=MessageResponseSchema, status_code=status.HTTP_200_OK)
+@router.post("/activate/", response_model=MessageResponseSchema, status_code=status.HTTP_200_OK)
 async def activate_user(request_data: UserActivationRequestSchema, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(UserModel).where(UserModel.email == request_data.email))
     user = result.scalar_one_or_none()
@@ -91,7 +90,7 @@ async def activate_user(request_data: UserActivationRequestSchema, db: AsyncSess
         async with db.begin():
             user.is_active = True
             db.delete(token)
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to activate user."
@@ -99,7 +98,7 @@ async def activate_user(request_data: UserActivationRequestSchema, db: AsyncSess
     return {"message": "User account activated successfully."}
 
 
-@router.post("/password_reset/request", response_model=MessageResponseSchema, status_code=status.HTTP_200_OK)
+@router.post("/password_reset/request/", response_model=MessageResponseSchema, status_code=status.HTTP_200_OK)
 async def request_password_reset(
         payload: PasswordResetRequestSchema,
         db: AsyncSession = Depends(get_db)):
@@ -126,7 +125,7 @@ async def request_password_reset(
     return {"message": "If you are registered, you will receive an email with instructions."}
 
 
-@router.post("/password_reset/complete",
+@router.post("/password_reset/complete/",
              response_model=MessageResponseSchema,
              status_code=status.HTTP_200_OK)
 async def response_password_reset_complete(
@@ -155,9 +154,9 @@ async def response_password_reset_complete(
         raise credentials_exception
     try:
         async with db.begin():
-            user.password == hash_password(payload.password)
+            user.password = hash_password(payload.password)
             await db.delete(token)
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while resetting the password."
@@ -165,7 +164,7 @@ async def response_password_reset_complete(
     return {"message": "Password reset successfully."}
 
 
-@router.post("/login", response_model=UserLoginResponseSchema, status_code=status.HTTP_200_OK)
+@router.post("/login/", response_model=UserLoginResponseSchema, status_code=status.HTTP_200_OK)
 async def login(
         form_data: UserLoginRequestSchema,
         db: AsyncSession = Depends(get_db),
@@ -211,7 +210,7 @@ async def login(
     }
 
 
-@router.post("/refresh", response_model=TokenRefreshResponseSchema, status_code=status.HTTP_200_OK)
+@router.post("/refresh/", response_model=TokenRefreshResponseSchema, status_code=status.HTTP_200_OK)
 async def refresh_access_token(
         request_data: TokenRefreshRequestSchema,
         db: AsyncSession = Depends(get_db),
@@ -277,6 +276,4 @@ async def refresh_access_token(
         )
     return TokenRefreshResponseSchema(
         access_token=access_token,
-        refresh_token=refresh_token,
-        token_type="bearer"
     )
